@@ -2,43 +2,67 @@
 import express from "express";
 import http from "http";
 import { WebSocketServer, WebSocket } from "ws";
-import readline from "readline";
+import { randomUUID } from "crypto";
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout
-});
+// Store client connections and their IDs
+const clients = new Map();
 
-// Handle client connections
 wss.on("connection", (ws) => {
-    console.log("New client connected!");
 
-    ws.on("close", () => {
-        console.log("Client disconnected");
-    });
-});
+    const clientId = randomUUID();
 
-// Broadcast message to ALL connected clients
-function broadcast(message) {
-    wss.clients.forEach((client) => {
-        if (client.readyState === WebSocket.OPEN) {
-            client.send(JSON.stringify({
-                message: message
+    // ID -> WebSocket connection
+    clients.set(clientId, ws);
+
+    console.log("Connected:", clientId);
+
+    ws.send(JSON.stringify({
+        type: "welcome",
+        clientId
+    }));
+
+    ws.on("message", (message) => {
+
+        const data = JSON.parse(message.toString());
+
+        // Find receiver using ID
+        const receiver = clients.get(data.targetId);
+
+        if (receiver && receiver.readyState === WebSocket.OPEN) {
+
+            // Send only to the target client
+            receiver.send(JSON.stringify({
+                type: "private",
+                senderId: clientId,
+                message: data.message
             }));
+
+            // Confirm delivery to sender
+            ws.send(JSON.stringify({
+                type: "success",
+                message: "Message sent successfully"
+            }));
+
+        } else {
+
+            ws.send(JSON.stringify({
+                type: "error",
+                message: "Client not found or disconnected"
+            }));
+
         }
     });
-}
 
-// Take server terminal input
-rl.on("line", (input) => {
-    broadcast(input);
+    ws.on("close", () => {
+        clients.delete(clientId);
+        console.log("Disconnected:", clientId);
+    });
+
 });
-
 server.listen(3000, () => {
     console.log("Server running on port 3000");
-    console.log("Type message to broadcast:");
 });
