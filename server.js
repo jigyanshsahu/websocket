@@ -1,7 +1,7 @@
 
 import express from "express";
 import http from "http";
-import { WebSocketServer } from "ws";
+import { WebSocketServer, WebSocket } from "ws";
 import readline from "readline";
 
 const app = express();
@@ -13,45 +13,32 @@ const rl = readline.createInterface({
     output: process.stdout
 });
 
-let connectedClient = null;
-
+// Handle client connections
 wss.on("connection", (ws) => {
-    console.log("Client connected!");
-
-    connectedClient = ws;
-
-    // RECEIVE from client
-    ws.on("message", (message) => {
-        const data = JSON.parse(message.toString());
-
-        console.log("\nClient:", data.message);
-
-        // SEND response to client
-        ws.send(JSON.stringify({
-            message: "Server received: " + data.message
-        }));
-    });
+    console.log("New client connected!");
 
     ws.on("close", () => {
         console.log("Client disconnected");
-        if (connectedClient === ws) {
-            connectedClient = null;
-        }
     });
 });
 
-// Server can also send custom input
+// Broadcast message to ALL connected clients
+function broadcast(message) {
+    wss.clients.forEach((client) => {
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify({
+                message: message
+            }));
+        }
+    });
+}
+
+// Take server terminal input
 rl.on("line", (input) => {
-    if (connectedClient?.readyState === 1) {
-        connectedClient.send(JSON.stringify({
-            message: input
-        }));
-    } else {
-        console.log("No client connected");
-    }
+    broadcast(input);
 });
 
 server.listen(3000, () => {
     console.log("Server running on port 3000");
-    console.log("Type messages to send to client:");
+    console.log("Type message to broadcast:");
 });
